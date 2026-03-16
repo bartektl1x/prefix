@@ -10,7 +10,25 @@ class TableIdentifier:
     def full_name(self) -> str:
         return f"{self.catalog}.{self.schema}.{self.table}"
 
+    @staticmethod
+    def from_full_name(full_name: str) -> "TableIdentifier":
+        normalized = full_name.strip()
+        parts = normalized.split(".")
 
+        if len(parts) != 3:
+            exc = ValueError(
+                "Fully qualified table name must have format 'catalog.schema.table'"
+            )
+            exc.add_note(f"Received value: {full_name}")
+            raise exc
+
+        catalog, schema, table = parts
+
+        return TableIdentifier(
+            catalog=catalog,
+            schema=schema,
+            table=table,
+        )
 
 
 
