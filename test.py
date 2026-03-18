@@ -1,23 +1,85 @@
-It is correct that we do not create additional hubs in BDV. Hubs represent business keys and should exist only in RDV. BDV does not redefine business keys, it only adds business meaning on top of them.
+from pathlib import Path
 
-However, this does not mean that RDV and BDV are “mixed” in an uncontrolled way. They are still logically separate layers, but they can reference the same hubs and links. In practice, BDV builds on top of RDV structures rather than duplicating them.
+from pyspark.sql import SparkSession
 
-For satellites and links:
+from shared_lib.naming.table_identifier import TableIdentifier
+from custom_layer.pipeline import CustomPipeline
 
-RDV contains raw satellites and links, strictly reflecting source data
 
-BDV introduces business satellites, PIT tables, and sometimes derived relationships
+class TestBasePipelineTableNameIntegration:
 
-Regarding the point about satellites with 1:1 fields, this is exactly why I raised that question earlier. If a satellite does not add history, business logic, or new meaning, then it may not belong in BDV and should be reconsidered.
+    def test_prefix_applied_from_spark_conf(self, spark: SparkSession, tmp_path: Path):
+        # given
+        spark.conf.set("schema_prefix", "dev_")
+        spark.conf.set("table_prefix", "tmp_")
 
-So the goal is not to physically duplicate everything between RDV and BDV, but to clearly separate responsibilities:
+        pipeline = CustomPipeline(tmp_path)
 
-RDV = raw, auditable history
+        identifier = TableIdentifier(
+            catalog="analytics",
+            schema="silver",
+            table="orders",
+        )
 
-BDV = business interpretation and rules applied on top
+        # when
+        resolved = pipeline.table_name_resolver.resolve(identifier)
 
-I agree that based on this, we should revisit parts of the current BDV design, but this should lead to a cleaner and more intentional model rather than just a smaller one.
+        # then
+        assert resolved.full_name() == "analytics.dev_silver.tmp_orders"
 
-Let me know if you want to walk through a concrete example together.
+    def test_no_prefix_returns_original_name(self, spark: SparkSession, tmp_path: Path):
+        # given
+        spark.conf.set("schema_prefix", "")
+        spark.conf.set("table_prefix", "")
 
-Best regards,
+        pipeline = CustomPipeline(tmp_path)
+
+        identifier = TableIdentifier(
+            catalog="analytics",
+            schema="silver",
+            table="orders",
+        )
+
+        # when
+        resolved = pipeline.table_name_resolver.resolve(identifier)
+
+        # then
+        assert resolved.full_name() == "analytics.silver.orders"
+
+    def test_partial_prefix_schema_only(self, spark: SparkSession, tmp_path: Path):
+        # given
+        spark.conf.set("schema_prefix", "dev_")
+        spark.conf.set("table_prefix", "")
+
+        pipeline = CustomPipeline(tmp_path)
+
+        identifier = TableIdentifier(
+            catalog="analytics",
+            schema="silver",
+            table="orders",
+        )
+
+        # when
+        resolved = pipeline.table_name_resolver.resolve(identifier)
+
+        # then
+        assert resolved.full_name() == "analytics.dev_silver.orders"
+
+    def test_partial_prefix_table_only(self, spark: SparkSession, tmp_path: Path):
+        # given
+        spark.conf.set("schema_prefix", "")
+        spark.conf.set("table_prefix", "tmp_")
+
+        pipeline = CustomPipeline(tmp_path)
+
+        identifier = TableIdentifier(
+            catalog="analytics",
+            schema="silver",
+            table="orders",
+        )
+
+        # when
+        resolved = pipeline.table_name_resolver.resolve(identifier)
+
+        # then
+        assert resolved.full_name() == "analytics.silver.tmp_orders"
